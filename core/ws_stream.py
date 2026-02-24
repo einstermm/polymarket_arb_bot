@@ -20,7 +20,7 @@ class PolymarketStreamer:
         """拉取活跃市场，并提取 Yes 和 No 对应的 Token ID"""
         logging.info("正在通过 REST API 构建监控清单...")
         try:
-            params = {"active": "true", "closed": "false", "limit": 20}
+            params = {"active": "true", "closed": "false", "limit": 200}
             response = requests.get(Config.API_URL, params=params, timeout=10)
             response.raise_for_status()
             markets = response.json()
