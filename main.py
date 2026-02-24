@@ -1,22 +1,22 @@
-import time
 import logging
-from core.fetcher import fetch_active_markets
-from core.analyzer import analyze_and_store
+from core.ws_stream import PolymarketStreamer
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
 
+
 def run_bot():
-    logging.info("启动 Polymarket MySQL 监控机器人...")
+    logging.info("🚀 启动 Polymarket 极速 WebSocket 监听机器人...")
+    streamer = PolymarketStreamer()
+
+    # run_forever 是阻塞的，会一直保持监听
     while True:
         try:
-            markets = fetch_active_markets()
-            if markets:
-                count = analyze_and_store(markets)
-                logging.info(f"扫描完毕: 发现 {count} 个套利机会。")
+            streamer.start()
         except Exception as e:
-            logging.error(f"运行出错: {e}")
+            logging.error(f"主进程异常崩溃，5 秒后重启: {e}")
+            import time
+            time.sleep(5)
 
-        time.sleep(60)
 
 if __name__ == "__main__":
     run_bot()
