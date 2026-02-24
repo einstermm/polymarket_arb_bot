@@ -64,8 +64,8 @@ class PolymarketStreamer:
                         tokens_to_subscribe.extend([yes_token, no_token])
 
                         # 初始化内存价格
-                        self.current_prices[yes_token] = float(price_list[0])
-                        self.current_prices[no_token] = float(price_list[1])
+                        self.current_prices[yes_token] = {'price': float(price_list[0]), 'size': 0}
+                        self.current_prices[no_token] = {'price': float(price_list[1]), 'size': 0}
 
                 except Exception as inner_e:
                     logging.warning(f"解析单个市场数据出错，跳过该市场。ID: {m.get('id')}, 错误: {inner_e}")
@@ -124,12 +124,13 @@ class PolymarketStreamer:
                                     mock_market_data = [{
                                         'id': market_info['market_id'],
                                         'question': market_info['question'],
-                                        'outcomePrices': [best_bid, pair_price] if market_info['type'] == 'Yes' else [pair_price, best_bid]
+                                        'outcomePrices': [best_bid, pair_price] if market_info['type'] == 'Yes' else [pair_price, best_bid],
+                                        'available_liquidity': available_liquidity  # <-- 新增这一行
                                     }]
                                     analyze_and_store(mock_market_data)
 
         except Exception as e:
-            pass # 忽略非价格类的心跳包解析错误
+            pass  # 忽略非价格类的心跳包解析错误
 
     def on_error(self, ws, error):
         logging.error(f"WebSocket 错误: {error}")

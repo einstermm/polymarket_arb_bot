@@ -32,12 +32,16 @@ def analyze_and_store(markets):
                 # 2. 逻辑判断：Yes + No <= 0.98 则视为套利机会
                 if 0 < total_price <= 0.98:
                     profit_margin = 1.0 - total_price
-                    logging.info(f"🚨 发现套利空间! 利润: {profit_margin:.2%} | {question}")
+                    # 获取传递过来的流动性，如果没有则默认为 0
+                    liquidity = market.get('available_liquidity', 0)
 
+                    logging.info(f"🚨 发现实盘套利空间! 利润: {profit_margin:.2%} | 容量: ${liquidity:.2f} | {question}")
+
+                    # 插入数据时加上 available_liquidity 字段
                     cursor.execute('''
-                        INSERT INTO arbitrage_opportunities (market_id, question, total_price, profit_margin)
-                        VALUES (%s, %s, %s, %s)
-                    ''', (market_id, question, total_price, profit_margin))
+                                        INSERT INTO arbitrage_opportunities (market_id, question, total_price, profit_margin, available_liquidity)
+                                        VALUES (%s, %s, %s, %s, %s)
+                                    ''', (market_id, question, total_price, profit_margin, liquidity))
                     opportunity_count += 1
 
             except ValueError:
