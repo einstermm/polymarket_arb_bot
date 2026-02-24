@@ -19,7 +19,7 @@ class PolymarketStreamer:
         """拉取活跃市场，并提取 Yes 和 No 对应的 Token ID"""
         logging.info("正在通过 REST API 构建监控清单...")
         try:
-            params = {"active": "true", "closed": "false", "limit": 20}  # 先监控 20 个热门市场测试
+            params = {"active": "true", "closed": "false", "limit": 20}
             response = requests.get(Config.API_URL, params=params, timeout=10)
             response.raise_for_status()
             markets = response.json()
@@ -27,22 +27,37 @@ class PolymarketStreamer:
             tokens_to_subscribe = []
 
             for m in markets:
-                # Polymarket 的每个选项 (Yes/No) 在底层都是一个独立的 Token
-                if 'tokens' in m and len(m['tokens']) == 2:
-                    yes_token = m['tokens'][0]['token_id']
-                    no_token = m['tokens'][1]['token_id']
+                # 适配 Polymarket API 的 clobTokenIds 字段
+                token_list = m.get('clobTokenIds') or m.get('tokens')
 
-                    # 建立反向映射，方便收到 WS 消息时知道是哪个市场
+                # 确保这是一个有且仅有 2 个选项的二元市场
+                if token_list and len(token_list) == 2:
+
+                    # 兼容两种不同格式的返回值 (字符串列表或字典列表)
+                    if isinstance(token_list[0], dict):
+                        yes_token = token_list[0]['token_id']
+                        no_token = token_list[1]['token_id']
+                    else:
+                        yes_token = token_list[0]
+                        no_token = token_list[1]
+
+                    # 建立反向映射
                     self.market_map[yes_token] = {'market_id': m['id'], 'question': m['question'], 'type': 'Yes', 'pair_token': no_token}
                     self.market_map[no_token] = {'market_id': m['id'], 'question': m['question'], 'type': 'No', 'pair_token': yes_token}
 
                     tokens_to_subscribe.extend([yes_token, no_token])
 
                     # 初始化内存价格
-                    self.current_prices[yes_token] = float(m['outcomePrices'][0])
-                    self.current_prices[no_token] = float(m['outcomePrices'][1])
+                    prices = m.get('outcomePrices', ['0', '0'])
+                    self.current_prices[yes_token] = float(prices[0])
+                    self.current_prices[no_token] = float(prices[1])
 
-            logging.info(f"监控清单构建完成，共监控 {len(markets)} 个市场，{len(tokens_to_subscribe)} 个 Token。")
+            logging.info(f"监控清单构建完成，共监控 {len(markets)} 个市场，成功提取 {len(tokens_to_subscribe)} 个 Token。")
+
+            # 如果还是 0，打印第一个市场的原始数据方便我们排查
+            if len(tokens_to_subscribe) == 0 and len(markets) > 0:
+                logging.warning(f"提取失败！API 返回的第一个市场数据结构如下：\n{markets[0]}")
+
             return tokens_to_subscribe
         except Exception as e:
             logging.error(f"构建清单失败: {e}")
