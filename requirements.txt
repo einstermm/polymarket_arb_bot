@@ -3,3 +3,5 @@ PyMySQL==1.1.0
 DBUtils==3.0.3
 python-dotenv==1.0.1
 websocket-client==1.7.0
+py-clob-client==0.34.6
+web3==6.15.1
