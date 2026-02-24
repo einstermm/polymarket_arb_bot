@@ -1,10 +1,10 @@
 import json
 import logging
-import json
 import requests
 import websocket
 from config.settings import Config
 from core.analyzer import analyze_and_store
+from core.trader import PolymarketTrader  # <-- 新增：导入交易模块
 
 # Polymarket 订单簿 WebSocket 地址
 WS_URL = "wss://ws-subscriptions-clob.polymarket.com/ws/market"
@@ -14,6 +14,7 @@ class PolymarketStreamer:
     def __init__(self):
         self.market_map = {}  # 用于映射 Token ID 和对应的市场信息
         self.current_prices = {}  # 缓存在内存中的实时价格
+        self.trader = PolymarketTrader()  # <-- 新增：初始化自动交易员
 
     def build_watchlist(self):
         """拉取活跃市场，并提取 Yes 和 No 对应的 Token ID"""
@@ -125,9 +126,35 @@ class PolymarketStreamer:
                                         'id': market_info['market_id'],
                                         'question': market_info['question'],
                                         'outcomePrices': [best_bid, pair_price] if market_info['type'] == 'Yes' else [pair_price, best_bid],
-                                        'available_liquidity': available_liquidity  # <-- 新增这一行
+                                        'available_liquidity': available_liquidity
                                     }]
                                     analyze_and_store(mock_market_data)
+
+                                    # ==========================================
+                                    # 👇 新增：终极实盘开火指令 (自动化执行)
+                                    # ==========================================
+                                    TRADE_SIZE = 10  # 测试阶段，每次只买 10 份
+
+                                    logging.info(f"🔫 正在自动发射订单！买入 {TRADE_SIZE} 份 {market_info['question']}")
+
+                                    # 买入第一条腿 (当前触发的 Token)
+                                    leg1_success = self.trader.execute_arbitrage(
+                                        token_id=token_id,
+                                        price=best_bid,
+                                        size=TRADE_SIZE
+                                    )
+
+                                    # 买入第二条腿 (配对的 Token)
+                                    leg2_success = self.trader.execute_arbitrage(
+                                        token_id=pair_token,
+                                        price=pair_price,
+                                        size=TRADE_SIZE
+                                    )
+
+                                    if leg1_success and leg2_success:
+                                        logging.info("🎉 双腿套利完美成交！等待事件结算锁定利润！")
+                                    else:
+                                        logging.warning("⚠️ 存在单腿成交风险，请登录 Polymarket 检查订单簿。")
 
         except Exception as e:
             pass  # 忽略非价格类的心跳包解析错误
