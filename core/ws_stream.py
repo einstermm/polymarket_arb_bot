@@ -87,34 +87,49 @@ class PolymarketStreamer:
             if isinstance(data, list) and len(data) > 0 and 'asset_id' in data[0]:
                 for tick in data:
                     token_id = tick['asset_id']
-                    # 提取最佳买价 (Best Bid)
+
+                    # 提取最佳买价 (Best Bid) 和对应的可成交量 (Size)
                     if 'bids' in tick and len(tick['bids']) > 0:
                         best_bid = float(tick['bids'][0]['price'])
+                        best_size = float(tick['bids'][0]['size'])
 
                         if token_id in self.market_map:
-                            # 1. 更新内存中的最新价格
-                            self.current_prices[token_id] = best_bid
+                            # 1. 更新内存中的最新价格和容量
+                            # 我们将 value 改为一个包含 price 和 size 的字典
+                            self.current_prices[token_id] = {'price': best_bid, 'size': best_size}
 
-                            # 2. 获取对应的配对 Token 价格
+                            # 2. 获取对应的配对 Token 数据
                             pair_token = self.market_map[token_id]['pair_token']
-                            pair_price = self.current_prices.get(pair_token, 0)
+                            pair_data = self.current_prices.get(pair_token, {'price': 0, 'size': 0})
+                            pair_price = pair_data['price']
+                            pair_size = pair_data['size']
 
-                            # 3. 实时计算套利空间 (Yes + No < 0.98)
-                            total_price = best_bid + pair_price
-                            if 0 < total_price <= 0.98:
-                                market_info = self.market_map[token_id]
-                                logging.info(f"⚡ [极速捕获] 套利空间! 总价: {total_price:.4f} | {market_info['question']}")
+                            # 3. 核心计算：只有当配对价格已经存在时才计算
+                            if pair_price > 0:
+                                total_price = best_bid + pair_price
 
-                                # 将数据包装成之前 analyzer 需要的格式存入数据库
-                                mock_market_data = [{
-                                    'id': market_info['market_id'],
-                                    'question': market_info['question'],
-                                    'outcomePrices': [best_bid, pair_price] if market_info['type'] == 'Yes' else [pair_price, best_bid]
-                                }]
-                                analyze_and_store(mock_market_data)
+                                # 取双方中较小的流动性作为交易瓶颈 (木桶效应)
+                                available_liquidity = min(best_size, pair_size)
+
+                                # 策略条件：利润空间 > 2% 且 该价位支撑至少 50 USDC 的交易量
+                                if 0 < total_price <= 0.98 and available_liquidity >= 50:
+                                    market_info = self.market_map[token_id]
+                                    logging.info(
+                                        f"⚡ [实盘级套利] 总价: {total_price:.4f} | "
+                                        f"最大可容纳资金: ${available_liquidity:.2f} | "
+                                        f"市场: {market_info['question']}"
+                                    )
+
+                                    # 将深度数据也存入，方便后续复盘
+                                    mock_market_data = [{
+                                        'id': market_info['market_id'],
+                                        'question': market_info['question'],
+                                        'outcomePrices': [best_bid, pair_price] if market_info['type'] == 'Yes' else [pair_price, best_bid]
+                                    }]
+                                    analyze_and_store(mock_market_data)
 
         except Exception as e:
-            pass  # 忽略非价格类的心跳包
+            pass # 忽略非价格类的心跳包解析错误
 
     def on_error(self, ws, error):
         logging.error(f"WebSocket 错误: {error}")
