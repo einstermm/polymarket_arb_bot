@@ -2,6 +2,7 @@ import json
 import logging
 import requests
 import websocket
+import time
 from config.settings import Config
 from core.analyzer import analyze_and_store
 from core.trader import PolymarketTrader  # <-- 新增：导入交易模块
@@ -15,6 +16,8 @@ class PolymarketStreamer:
         self.market_map = {}  # 用于映射 Token ID 和对应的市场信息
         self.current_prices = {}  # 缓存在内存中的实时价格
         self.trader = PolymarketTrader()  # <-- 新增：初始化自动交易员
+        self.msg_count = 0
+        self.last_log_time = time.time()
 
     def build_watchlist(self):
         """拉取活跃市场，并提取 Yes 和 No 对应的 Token ID"""
@@ -82,6 +85,16 @@ class PolymarketStreamer:
     def on_message(self, ws, message):
         """接收到 WebSocket 实时价格推送时的处理逻辑"""
         try:
+
+            self.msg_count += 1
+            current_time = time.time()
+
+            # 每隔 60 秒打印一次心跳日志，证明程序没死
+            if current_time - self.last_log_time >= 60:
+                logging.info(f"💓 [系统心跳] 雷达运行中... 过去 1 分钟处理了 {self.msg_count} 次盘口价格跳动。")
+                self.msg_count = 0  # 重置计数器
+                self.last_log_time = current_time
+
             data = json.loads(message)
 
             # 过滤出订单簿更新事件
